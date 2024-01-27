@@ -61,10 +61,13 @@ white_space = {new_line} | [ \t\f]
 {IntLiteral} { return symbol("Intconst", INTCONST, Long.parseLong(yytext())); }
 
 /* separators */
+"*"               { return symbol("*", TIMES);}
 "+"               { return symbol("+",  PLUS); }
 "-"               { return symbol("-",  MINUS); }
 "("               { return symbol("(",  LPAREN); }
 ")"               { return symbol(")",  RPAREN); }
+";"               { return symbol(";",  SEMICOLON); }
+"return"          { return symbol("return", RETURN);}
 
 /* comments */
 "/*" [^*] ~"*/" | "/*" "*"+ "/"

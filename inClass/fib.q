@@ -15,7 +15,7 @@ int double(int i ){
     return i *2;
 }
 
-    Ref makeList (intx){
+    Ref makeList (int x){
         if (x==0) return nil;
         return x . makeList(x-1);
     }
