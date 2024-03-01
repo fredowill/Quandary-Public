@@ -50,6 +50,10 @@ import interpreter.Interpreter;
 
 IntLiteral = 0 | [1-9][0-9]*
 
+Identifier = [a-zA-Z_][a-zA-Z0-9_]*
+
+
+
 new_line = \r|\n|\r\n;
 
 white_space = {new_line} | [ \t\f]
@@ -66,8 +70,36 @@ white_space = {new_line} | [ \t\f]
 "-"               { return symbol("-",  MINUS); }
 "("               { return symbol("(",  LPAREN); }
 ")"               { return symbol(")",  RPAREN); }
+"{"               { return symbol("(",  LCURLY); }
+"}"               { return symbol(")",  RCURLY); }
 ";"               { return symbol(";",  SEMICOLON); }
 "return"          { return symbol("return", RETURN);}
+"print"          { return symbol("print", PRINT);}
+"="               { return symbol("=", ASSIGN);}
+
+/*types*/
+"int"               { return symbol("int",  INT); }
+"Ref"               { return symbol("Ref",  REF); }
+"Q"                  { return symbol("Q",  Q); }
+
+/*keywords*/
+"if"               { return symbol("if",  IF); }
+"else"               { return symbol("else",  ELSE); }
+
+/*cond seperators*/
+"&&"              { return symbol("&&",  AND); }
+"||"              { return symbol("||",  OR); }
+"!"               { return symbol("!",  NOT); }
+"=="              { return symbol("==",  EQ); }
+">="              { return symbol(">=",  GE); }
+">"               { return symbol(">",  GT); }
+"<="              { return symbol("<=",  LE); }
+"<"               { return symbol("<",  LT); }
+"!="              { return symbol("!=",  NE); }
+
+/*identifiers*/
+{Identifier} { return symbol("Identifier", IDENT, yytext()); }
+
 
 /* comments */
 "/*" [^*] ~"*/" | "/*" "*"+ "/"

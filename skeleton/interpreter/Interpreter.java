@@ -1,6 +1,7 @@
 package interpreter;
 
 import java.io.*;
+import java.util.HashMap;
 import java.util.Random;
 
 import parser.ParserWrapper;
@@ -75,11 +76,13 @@ public class Interpreter {
             Interpreter.fatalError("Uncaught parsing error: " + ex, Interpreter.EXIT_PARSING_ERROR);
         }
         //uncommented for debugging
-        astRoot.println(System.out);
+        
+    //    astRoot.println(System.out);
         interpreter = new Interpreter(astRoot);
         interpreter.initMemoryManager(gcType, heapBytes);
         String returnValueAsString = interpreter.executeRoot(astRoot, quandaryArg).toString();
         System.out.println("Interpreter returned " + returnValueAsString);
+        
     }
 
     final Program astRoot;
@@ -103,26 +106,151 @@ public class Interpreter {
     }
 
     Object executeRoot(Program astRoot, long arg) {
-        return evaluate(astRoot.getExpr());
+       HashMap<String, Long> context = new HashMap<String, Long>();
+        FuncDef main = astRoot.getFunc();
+        return executeFunc(main, arg, context);
+        
+    }
+    
+    Object executeFunc(FuncDef func, long mainParameter, HashMap<String, Long> context){
+        VarDecl funcArg = func.getFuncArgs();
+        StmtList stmtList = func.getStmtList();
+        context.put(funcArg.getVarName(), mainParameter);
+        Object ret = executeStmtList(stmtList, context);
+        return ret;
     }
 
-    Object evaluate(Expr expr) {
+    Object executeStmtList(StmtList slist, HashMap<String, Long> context){
+        Object ret ;
+        HashMap<String, Long> copiedMap = (HashMap<String, Long>) context.clone();
+        while (slist != null){
+            Stmt s = slist.getStmt();
+            slist = slist.getStmtList();
+            ret = executeStmt(s, copiedMap);
+            if(ret != null){
+                return ret;
+            }
+            updateMap(context, copiedMap);
+        }
+        return null;
+    }
+
+    void updateMap(HashMap<String, Long> originalMap, HashMap<String, Long> copiedMap) {
+        for (HashMap.Entry<String, Long> entry : copiedMap.entrySet()) {
+            String key = entry.getKey();
+            Long copiedValue = entry.getValue();
+    
+            // Check if the key exists in the original map and if the values are different
+            if (originalMap.containsKey(key) && !originalMap.get(key).equals(copiedValue)) {
+                // Update the value in the original map
+                originalMap.remove(key);
+                originalMap.put(key, copiedValue);
+            }
+        }
+    }
+    //add print stmt class 
+    Object executeStmt(Stmt s, HashMap<String, Long> context){
+        if (s instanceof VarDeclStmt){
+            VarDeclStmt varstmt = (VarDeclStmt)s;
+            Object value = evaluateExpr(varstmt.getExpr(), context);
+            VarDecl vardecl = varstmt.getVarDecl();
+            String varName = vardecl.getVarName();
+            context.put(varName, (Long)value); //check if it already exisits
+            return null;
+        } else if (s instanceof IfStmt) {
+            IfStmt i = (IfStmt)s;
+            Cond cond = i.getCond();
+            Stmt sBlock = i.getStmt();
+            if(evaluateCond(cond, context)){
+                return executeStmt(sBlock, context);
+            }
+            return null;
+        } else if (s instanceof IfElseStmt){
+            IfElseStmt i = (IfElseStmt)s;
+            Cond cond = i.getCond();
+            Stmt sIfBlock = i.getStmt1();
+            Stmt sElseBlock = i.getStmt2();
+            if(evaluateCond(cond, context)){
+                return executeStmt(sIfBlock, context);
+            } else {
+                return executeStmt(sElseBlock, context);
+            } 
+        } else if( s instanceof ReturnStmt){
+            ReturnStmt r = (ReturnStmt) s;
+            return evaluateExpr(r.getExpr(), context);
+        } else if (s instanceof StmtList){
+            return executeStmtList((StmtList)s, context);
+        }else if( s instanceof PrintStmt){
+            PrintStmt p = (PrintStmt) s;
+            String str = evaluateExpr(p.getExpr(), context).toString();
+            System.out.println(str);
+            return null;
+        } else {
+            throw new RuntimeException("Unhandled Stmt type");
+        }
+
+    }
+
+    //dont forget breaks if using switch 
+    //Longs are objects, dont use ==, use .equals
+
+
+
+    Boolean evaluateCond(Cond condition, HashMap<String, Long> context){
+        if (condition instanceof CompareCond){
+            CompareCond c = (CompareCond) condition;
+            Expr leftSide = c.getLeftExpr();
+            Expr rightSide = c.getRightExpr();
+            int comparator = c.getComparator();
+            switch(comparator) {
+                case CompareCond.LT: return (Long)evaluateExpr(leftSide, context) < (Long)evaluateExpr(rightSide, context);
+                case CompareCond.GT: return (Long)evaluateExpr(leftSide, context) > (Long)evaluateExpr(rightSide, context);
+                case CompareCond.LE: return (Long)evaluateExpr(leftSide, context) <= (Long)evaluateExpr(rightSide, context);
+                case CompareCond.EQ: return evaluateExpr(leftSide, context).equals((Long)evaluateExpr(rightSide, context));
+                case CompareCond.GE: return (Long)evaluateExpr(leftSide, context) >= (Long)evaluateExpr(rightSide, context);
+                case CompareCond.NE: return (Long)evaluateExpr(leftSide, context) != (Long)evaluateExpr(rightSide, context);
+            } 
+            
+        } else if(condition instanceof LogicalCond){
+            LogicalCond c = (LogicalCond) condition;
+            Cond leftSide = c.getCond1();
+            Cond rightSide = c.getCond2();
+            int comparator = c.getComparator();
+            switch(comparator) {
+                case LogicalCond.AND: return evaluateCond(leftSide, context) && evaluateCond(rightSide, context);
+                case LogicalCond.NOT: return !evaluateCond(leftSide, context);
+                case LogicalCond.OR: return evaluateCond(leftSide, context) || evaluateCond(rightSide, context);
+            } 
+
+        } 
+            throw new RuntimeException("Unexpected Cond Type");
+        
+    }
+
+    //EXPRESSIONS
+
+    Object evaluateExpr(Expr expr, HashMap<String, Long> context) {
         if (expr instanceof ConstExpr) {
             return ((ConstExpr)expr).getValue();
+        } else if(expr instanceof VarExpr ) {
+            VarExpr v = (VarExpr) expr;
+            String vname = v.getVariableName();
+            if(context.containsKey(vname)){
+                return (Long)context.get(vname);
+            }
         } else if ( expr instanceof UMinusExpr) {
             UMinusExpr uexpr = (UMinusExpr)expr; 
-                return 0 - (Long)evaluate(uexpr.getUMinusExpr());
+                return 0 - (Long)evaluateExpr(uexpr.getUMinusExpr(), context);
         } else if (expr instanceof BinaryExpr) {
             BinaryExpr binaryExpr = (BinaryExpr)expr;
             switch (binaryExpr.getOperator()) {
-                case BinaryExpr.PLUS: return (Long)evaluate(binaryExpr.getLeftExpr()) + (Long)evaluate(binaryExpr.getRightExpr());
-                case BinaryExpr.MINUS: return (Long)evaluate(binaryExpr.getLeftExpr()) - (Long)evaluate(binaryExpr.getRightExpr());
-                case BinaryExpr.TIMES: return (Long)evaluate(binaryExpr.getLeftExpr()) * (Long)evaluate(binaryExpr.getRightExpr());
+                case BinaryExpr.PLUS: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context) + (Long)evaluateExpr(binaryExpr.getRightExpr(), context);
+                case BinaryExpr.MINUS: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context) - (Long)evaluateExpr(binaryExpr.getRightExpr(), context);
+                case BinaryExpr.TIMES: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context) * (Long)evaluateExpr(binaryExpr.getRightExpr(), context);
                 default: throw new RuntimeException("Unhandled operator");
             }
-        } else {
+        } 
             throw new RuntimeException("Unhandled Expr type");
-        }
     }
 
 	public static void fatalError(String message, int processReturnCode) {
