@@ -29,7 +29,7 @@ parser code {:
 
 terminal PLUS, MINUS, TIMES, LPAREN, RPAREN, LCURLY, RCURLY;
 terminal UMINUS;
-terminal SEMICOLON, RETURN, PRINT;
+terminal SEMICOLON, RETURN, PRINT, COMMA;
 terminal INT, Q, REF;
 terminal IF, ELSE;
 terminal EQ, GE, GT, LE, LT, NE, NOT, AND, OR;
@@ -41,10 +41,11 @@ terminal String IDENT;
 non terminal Program         program;
 
 non terminal FuncDef         funcDef;
+non terminal FuncDefList      funcDefList;
 non terminal VarDecl         varDecl;
 
-//non terminal FormalDeclList  formalDeclList;
-//non terminal NeFormalDeclList neFormalDeclList;
+non terminal FormalDeclList  formalDeclList;
+non terminal FormalDeclList  neFormalDeclList;
 
 
 non terminal StmtList        stmtList;
@@ -53,6 +54,8 @@ non terminal Cond            cond;
 
 non terminal Type            type;         
 non terminal Expr            expr;
+non terminal ExprList        exprList;
+non terminal ExprList        neExprList;
 non terminal BinaryExpr      binaryExpr;
 
 precedence left ELSE;
@@ -66,12 +69,31 @@ precedence left UMINUS;
 
 start with program;
 
-program ::= funcDef:f
+program ::= funcDefList:f
             {: RESULT = new Program(f, loc(fleft, fright)); :}
          ;
 
-funcDef ::= varDecl:v1 LPAREN varDecl:v2 RPAREN LCURLY stmtList:sl RCURLY
-            {: RESULT = new FuncDef(v1, v2, sl, loc(slleft, slright)); :}
+funcDefList ::=  funcDef:f funcDefList:fl
+            {: RESULT = new FuncDefList(f, fl, loc(fleft, fright)); :}
+         | /*placeholder*/
+            {: RESULT = null; :}
+         ;
+
+funcDef ::= varDecl:v1 LPAREN formalDeclList:fdl RPAREN LCURLY stmtList:sl RCURLY
+            {: RESULT = new FuncDef(v1, fdl, sl, loc(slleft, slright)); :}
+
+         ;
+
+formalDeclList ::=  neFormalDeclList:nf
+            {: RESULT = nf; :}
+         | /*placeholder*/
+            {: RESULT = null; :}
+         ;
+
+neFormalDeclList ::=  varDecl:v COMMA neFormalDeclList:nfl
+            {: RESULT = new FormalDeclList(v, nfl, loc(vleft, vright)); :}
+         |  varDecl:v
+            {: RESULT = new FormalDeclList(v, null, loc(vleft, vright)); :}
          ;
 
 varDecl ::= type:t IDENT:id
@@ -139,6 +161,20 @@ expr ::= INTCONST:c
          {: RESULT = e; :}
       |  LPAREN expr:e RPAREN
          {: RESULT = e; :} 
+      |  IDENT:id LPAREN exprList:el RPAREN
+         {: RESULT = new CallExpr(id, el, loc(idleft, idright)); :} 
+      ;
+
+exprList ::= neExprList:e
+         {: RESULT = e; :}
+      |   /*placeholder*/
+         {: RESULT = null; :}
+      ;
+
+neExprList ::= expr:e COMMA neExprList:eList
+         {: RESULT = new ExprList(e, eList , loc(eleft, eright)); :}
+      |   expr:e
+         {: RESULT = new ExprList(e, null , loc(eleft, eright)); :}
       ;
 
 binaryExpr ::= expr:e1 PLUS expr:e2

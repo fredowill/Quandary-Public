@@ -4,18 +4,21 @@ import java.io.PrintStream;
 
 public class Program extends ASTNode {
 
-    final FuncDef main;
+    final FuncDefList funcdeflist;
 
-    public Program(FuncDef main, Location loc) {
+    public Program(FuncDefList fdl, Location loc) {
         super(loc);
-        this.main = main;
+        this.funcdeflist = fdl;
     }
 
     public FuncDef getFunc() {
-        return this.main;
+        return null;
+    }
+    public FuncDefList getFuncDefList() {
+        return this.funcdeflist;
     }
 
     public void println(PrintStream ps) {
-        ps.println(this.main);
+        ps.println(this.funcdeflist);
     }
 }

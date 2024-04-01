@@ -76,6 +76,7 @@ white_space = {new_line} | [ \t\f]
 "return"          { return symbol("return", RETURN);}
 "print"          { return symbol("print", PRINT);}
 "="               { return symbol("=", ASSIGN);}
+","               { return symbol(",", COMMA);}
 
 /*types*/
 "int"               { return symbol("int",  INT); }

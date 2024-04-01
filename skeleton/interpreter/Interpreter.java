@@ -106,27 +106,41 @@ public class Interpreter {
     }
 
     Object executeRoot(Program astRoot, long arg) {
-       HashMap<String, Long> context = new HashMap<String, Long>();
-        FuncDef main = astRoot.getFunc();
-        return executeFunc(main, arg, context);
-        
+        HashMap<String, Long> context = new HashMap<String, Long>();
+        HashMap<String, FuncDef> funcDefMap = new HashMap<String, FuncDef>();
+        FuncDefList funcList = astRoot.getFuncDefList();
+        FuncDef func = astRoot.getFunc();
+        buildFuncDefMap(funcList, funcDefMap);
+        FuncDef main = funcDefMap.get("main");
+        context.put(main.getFuncParams().getVarDecl().getVarName(), arg);
+        return executeFunc(main, context, funcDefMap);
     }
     
-    Object executeFunc(FuncDef func, long mainParameter, HashMap<String, Long> context){
-        VarDecl funcArg = func.getFuncArgs();
+    void buildFuncDefMap(FuncDefList funcList, HashMap<String, FuncDef> funcDefMap){
+        FuncDef temp;
+        FuncDefList list = funcList;
+        while(list != null ){
+            temp = list.getFunc();
+            String funcArgIdent =  temp.getFuncIdentifier().getVarName();
+            funcDefMap.put(funcArgIdent, temp);
+            list = list.getFuncList();
+        }
+    }
+
+    Object executeFunc(FuncDef func, HashMap<String, Long> context, HashMap<String, FuncDef> funcDefMap){
         StmtList stmtList = func.getStmtList();
-        context.put(funcArg.getVarName(), mainParameter);
-        Object ret = executeStmtList(stmtList, context);
+        Object ret = executeStmtList(stmtList, context, funcDefMap);
+        System.out.println("Running func:" + func);
         return ret;
     }
 
-    Object executeStmtList(StmtList slist, HashMap<String, Long> context){
+    Object executeStmtList(StmtList slist, HashMap<String, Long> context, HashMap<String, FuncDef> funcs){
         Object ret ;
         HashMap<String, Long> copiedMap = (HashMap<String, Long>) context.clone();
         while (slist != null){
             Stmt s = slist.getStmt();
             slist = slist.getStmtList();
-            ret = executeStmt(s, copiedMap);
+            ret = executeStmt(s, copiedMap, funcs);
             if(ret != null){
                 return ret;
             }
@@ -149,10 +163,11 @@ public class Interpreter {
         }
     }
     //add print stmt class 
-    Object executeStmt(Stmt s, HashMap<String, Long> context){
+    Object executeStmt(Stmt s, HashMap<String, Long> context, HashMap<String, FuncDef> funcs){
         if (s instanceof VarDeclStmt){
             VarDeclStmt varstmt = (VarDeclStmt)s;
-            Object value = evaluateExpr(varstmt.getExpr(), context);
+           // System.out.println("varstmt expr: "+varstmt.getExpr());
+            Object value = evaluateExpr(varstmt.getExpr(), context, funcs);
             VarDecl vardecl = varstmt.getVarDecl();
             String varName = vardecl.getVarName();
             context.put(varName, (Long)value); //check if it already exisits
@@ -161,8 +176,8 @@ public class Interpreter {
             IfStmt i = (IfStmt)s;
             Cond cond = i.getCond();
             Stmt sBlock = i.getStmt();
-            if(evaluateCond(cond, context)){
-                return executeStmt(sBlock, context);
+            if(evaluateCond(cond, context, funcs)){
+                return executeStmt(sBlock, context, funcs);
             }
             return null;
         } else if (s instanceof IfElseStmt){
@@ -170,19 +185,19 @@ public class Interpreter {
             Cond cond = i.getCond();
             Stmt sIfBlock = i.getStmt1();
             Stmt sElseBlock = i.getStmt2();
-            if(evaluateCond(cond, context)){
-                return executeStmt(sIfBlock, context);
+            if(evaluateCond(cond, context, funcs)){
+                return executeStmt(sIfBlock, context, funcs);
             } else {
-                return executeStmt(sElseBlock, context);
+                return executeStmt(sElseBlock, context, funcs);
             } 
         } else if( s instanceof ReturnStmt){
             ReturnStmt r = (ReturnStmt) s;
-            return evaluateExpr(r.getExpr(), context);
+            return evaluateExpr(r.getExpr(), context, funcs);
         } else if (s instanceof StmtList){
-            return executeStmtList((StmtList)s, context);
+            return executeStmtList((StmtList)s, context, funcs);
         }else if( s instanceof PrintStmt){
             PrintStmt p = (PrintStmt) s;
-            String str = evaluateExpr(p.getExpr(), context).toString();
+            String str = evaluateExpr(p.getExpr(), context, funcs).toString();
             System.out.println(str);
             return null;
         } else {
@@ -196,19 +211,19 @@ public class Interpreter {
 
 
 
-    Boolean evaluateCond(Cond condition, HashMap<String, Long> context){
+    Boolean evaluateCond(Cond condition, HashMap<String, Long> context, HashMap<String, FuncDef> funcs){
         if (condition instanceof CompareCond){
             CompareCond c = (CompareCond) condition;
             Expr leftSide = c.getLeftExpr();
             Expr rightSide = c.getRightExpr();
             int comparator = c.getComparator();
             switch(comparator) {
-                case CompareCond.LT: return (Long)evaluateExpr(leftSide, context) < (Long)evaluateExpr(rightSide, context);
-                case CompareCond.GT: return (Long)evaluateExpr(leftSide, context) > (Long)evaluateExpr(rightSide, context);
-                case CompareCond.LE: return (Long)evaluateExpr(leftSide, context) <= (Long)evaluateExpr(rightSide, context);
-                case CompareCond.EQ: return evaluateExpr(leftSide, context).equals((Long)evaluateExpr(rightSide, context));
-                case CompareCond.GE: return (Long)evaluateExpr(leftSide, context) >= (Long)evaluateExpr(rightSide, context);
-                case CompareCond.NE: return (Long)evaluateExpr(leftSide, context) != (Long)evaluateExpr(rightSide, context);
+                case CompareCond.LT: return (Long)evaluateExpr(leftSide, context, funcs) < (Long)evaluateExpr(rightSide, context, funcs);
+                case CompareCond.GT: return (Long)evaluateExpr(leftSide, context, funcs) > (Long)evaluateExpr(rightSide, context, funcs);
+                case CompareCond.LE: return (Long)evaluateExpr(leftSide, context, funcs) <= (Long)evaluateExpr(rightSide, context, funcs);
+                case CompareCond.EQ: return evaluateExpr(leftSide, context, funcs).equals((Long)evaluateExpr(rightSide, context, funcs));
+                case CompareCond.GE: return (Long)evaluateExpr(leftSide, context, funcs) >= (Long)evaluateExpr(rightSide, context, funcs);
+                case CompareCond.NE: return (Long)evaluateExpr(leftSide, context, funcs) != (Long)evaluateExpr(rightSide, context, funcs);
             } 
             
         } else if(condition instanceof LogicalCond){
@@ -217,9 +232,9 @@ public class Interpreter {
             Cond rightSide = c.getCond2();
             int comparator = c.getComparator();
             switch(comparator) {
-                case LogicalCond.AND: return evaluateCond(leftSide, context) && evaluateCond(rightSide, context);
-                case LogicalCond.NOT: return !evaluateCond(leftSide, context);
-                case LogicalCond.OR: return evaluateCond(leftSide, context) || evaluateCond(rightSide, context);
+                case LogicalCond.AND: return evaluateCond(leftSide, context, funcs) && evaluateCond(rightSide, context, funcs);
+                case LogicalCond.NOT: return !evaluateCond(leftSide, context, funcs);
+                case LogicalCond.OR: return evaluateCond(leftSide, context, funcs) || evaluateCond(rightSide, context, funcs);
             } 
 
         } 
@@ -229,7 +244,7 @@ public class Interpreter {
 
     //EXPRESSIONS
 
-    Object evaluateExpr(Expr expr, HashMap<String, Long> context) {
+    Object evaluateExpr(Expr expr, HashMap<String, Long> context, HashMap<String, FuncDef> funcs) {
         if (expr instanceof ConstExpr) {
             return ((ConstExpr)expr).getValue();
         } else if(expr instanceof VarExpr ) {
@@ -240,17 +255,58 @@ public class Interpreter {
             }
         } else if ( expr instanceof UMinusExpr) {
             UMinusExpr uexpr = (UMinusExpr)expr; 
-                return 0 - (Long)evaluateExpr(uexpr.getUMinusExpr(), context);
+                return 0 - (Long)evaluateExpr(uexpr.getUMinusExpr(), context, funcs);
         } else if (expr instanceof BinaryExpr) {
             BinaryExpr binaryExpr = (BinaryExpr)expr;
             switch (binaryExpr.getOperator()) {
-                case BinaryExpr.PLUS: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context) + (Long)evaluateExpr(binaryExpr.getRightExpr(), context);
-                case BinaryExpr.MINUS: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context) - (Long)evaluateExpr(binaryExpr.getRightExpr(), context);
-                case BinaryExpr.TIMES: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context) * (Long)evaluateExpr(binaryExpr.getRightExpr(), context);
+                case BinaryExpr.PLUS: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs) + (Long)evaluateExpr(binaryExpr.getRightExpr(), context, funcs);
+                case BinaryExpr.MINUS: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs) - (Long)evaluateExpr(binaryExpr.getRightExpr(), context, funcs);
+                case BinaryExpr.TIMES: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs) * (Long)evaluateExpr(binaryExpr.getRightExpr(), context, funcs);
                 default: throw new RuntimeException("Unhandled operator");
             }
+        } else if (expr instanceof CallExpr){
+            CallExpr callexpr = (CallExpr)expr;
+            String ident = callexpr.getIdent();
+            ExprList elist = callexpr.getExprList();
+            if(ident.equals("randomInt")){
+                return CallExpr.randomInt((long)evaluateExpr(elist.getExpr(), context, funcs));
+            } 
+            if(funcs.containsKey(ident)){
+                FuncDef func = funcs.get(ident);
+                HashMap<String, Long> newScope = new HashMap<String, Long>();
+                System.out.println("expr: " + callexpr);
+                System.out.println("elist: " + elist);
+                executeExprList(func.getFuncParams(), elist, newScope, context, funcs);
+                return executeFunc(func, newScope, funcs);
+            } else {
+                throw new RuntimeException("Unexpected Function call");
+            }
         } 
+            System.out.println(expr);
             throw new RuntimeException("Unhandled Expr type");
+    }
+
+    Object executeExprList(FormalDeclList formalDeclList, ExprList elist, HashMap<String, Long> innerContext, HashMap<String, Long> context, HashMap<String, FuncDef> funcs){
+        if(elist != null){
+            ExprList neExprList = elist;
+            System.out.println("ExprList: " + elist);
+            FormalDeclList fdl = formalDeclList;
+            if(fdl !=null){
+                System.out.println(">1 parameter");
+                FormalDeclList neFdl = fdl;
+                System.out.println("neFdl: " + neFdl);
+                System.out.println("neExprList: " + neExprList);
+                while(neExprList != null){
+                    VarDecl var = neFdl.getVarDecl();
+                    neFdl = neFdl.getFuncParams();
+                    Expr e = neExprList.getExpr();
+                    neExprList = neExprList.getExprList();
+                    innerContext.put(var.getVarName(), (Long) evaluateExpr(e, context, funcs));
+                }
+            }
+        }
+        System.out.println("innerContext: " + innerContext);
+        return null;
     }
 
 	public static void fatalError(String message, int processReturnCode) {

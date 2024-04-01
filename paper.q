@@ -1,6 +1,10 @@
+/* Program with multiple function definitions */
 int main (int arg){
-    if (arg >= 823){
-        return 5;
-    }
-    return 0;
+    int x = randomNegInt(); /* empty exprList */
+    return x;
+}
+
+/* Function with no params */
+int randomNegInt(){ 
+    return randomInt(100) * -1;
 }
