@@ -106,13 +106,15 @@ public class Interpreter {
     }
 
     Object executeRoot(Program astRoot, long arg) {
-        HashMap<String, Long> context = new HashMap<String, Long>();
+        HashMap<String, QVal> context = new HashMap<String, QVal>();
         HashMap<String, FuncDef> funcDefMap = new HashMap<String, FuncDef>();
         FuncDefList funcList = astRoot.getFuncDefList();
         FuncDef func = astRoot.getFunc();
         buildFuncDefMap(funcList, funcDefMap);
         FuncDef main = funcDefMap.get("main");
-        context.put(main.getFuncParams().getVarDecl().getVarName(), arg);
+        QIntVal QArg = new QIntVal(arg);
+        QArg.mutable = main.getFuncParams().getVarDecl().isMutable();
+        context.put(main.getFuncParams().getVarDecl().getVarName(),QArg );
         return executeFunc(main, context, funcDefMap);
     }
     
@@ -127,16 +129,16 @@ public class Interpreter {
         }
     }
 
-    Object executeFunc(FuncDef func, HashMap<String, Long> context, HashMap<String, FuncDef> funcDefMap){
+    QVal executeFunc(FuncDef func, HashMap<String, QVal> context, HashMap<String, FuncDef> funcDefMap){
         StmtList stmtList = func.getStmtList();
-        Object ret = executeStmtList(stmtList, context, funcDefMap);
-        System.out.println("Running func:" + func);
+        QVal ret = executeStmtList(stmtList, context, funcDefMap);
+       // System.out.println("Running func:" + func);
         return ret;
     }
 
-    Object executeStmtList(StmtList slist, HashMap<String, Long> context, HashMap<String, FuncDef> funcs){
-        Object ret ;
-        HashMap<String, Long> copiedMap = (HashMap<String, Long>) context.clone();
+    QVal executeStmtList(StmtList slist, HashMap<String, QVal> context, HashMap<String, FuncDef> funcs){
+        QVal ret ;
+        HashMap<String, QVal> copiedMap = (HashMap<String, QVal>) context.clone();
         while (slist != null){
             Stmt s = slist.getStmt();
             slist = slist.getStmtList();
@@ -149,13 +151,13 @@ public class Interpreter {
         return null;
     }
 
-    void updateMap(HashMap<String, Long> originalMap, HashMap<String, Long> copiedMap) {
-        for (HashMap.Entry<String, Long> entry : copiedMap.entrySet()) {
+    void updateMap(HashMap<String, QVal> originalMap, HashMap<String, QVal> copiedMap) {
+        for (HashMap.Entry<String, QVal> entry : copiedMap.entrySet()) {
             String key = entry.getKey();
-            Long copiedValue = entry.getValue();
+            QVal copiedValue = entry.getValue();
     
-            // Check if the key exists in the original map and if the values are different
-            if (originalMap.containsKey(key) && !originalMap.get(key).equals(copiedValue)) {
+            // Check if the key exists in the original map
+            if (originalMap.containsKey(key)) {
                 // Update the value in the original map
                 originalMap.remove(key);
                 originalMap.put(key, copiedValue);
@@ -163,16 +165,56 @@ public class Interpreter {
         }
     }
     //add print stmt class 
-    Object executeStmt(Stmt s, HashMap<String, Long> context, HashMap<String, FuncDef> funcs){
+    QVal executeStmt(Stmt s, HashMap<String, QVal> context, HashMap<String, FuncDef> funcs){
         if (s instanceof VarDeclStmt){
             VarDeclStmt varstmt = (VarDeclStmt)s;
            // System.out.println("varstmt expr: "+varstmt.getExpr());
-            Object value = evaluateExpr(varstmt.getExpr(), context, funcs);
+            QVal value = evaluateExpr(varstmt.getExpr(), context, funcs);
             VarDecl vardecl = varstmt.getVarDecl();
             String varName = vardecl.getVarName();
-            context.put(varName, (Long)value); //check if it already exisits
+            value.mutable = vardecl.isMutable();
+            context.put(varName, value); //check if it already exisits
             return null;
-        } else if (s instanceof IfStmt) {
+        } else if(s instanceof AssignStmt) {
+            AssignStmt a = (AssignStmt) s;
+            String id = a.getIdent();
+            Expr e = a.getExpr();
+            QVal val = evaluateExpr(e, context, funcs);
+            if(context.containsKey(id)){
+                QVal prevVal = context.remove(id);
+                val.mutable = prevVal.mutable;
+                context.put(id, val);
+            } else {
+                throw new RuntimeException("Variable not declared");
+            }
+            return null;
+        } else if(s instanceof CallStmt){
+            CallStmt cStmt = (CallStmt) s;
+            String id = cStmt.getIdent();
+            ExprList elist = cStmt.getExprList();
+            if(id.equals("randomInt")){
+                CallExpr.randomInt(( (QIntVal) evaluateExpr(elist.getExpr(), context, funcs)).getInt());
+            } else if(id.equals("left")){
+                CallStmt.left(((QRefVal) evaluateExpr(elist.getExpr(), context, funcs)));
+            } else if(id.equals("right")){
+                CallStmt.right(((QRefVal) evaluateExpr(elist.getExpr(), context, funcs)));
+            } else if(id.equals("isAtom")){
+                CallStmt.isAtom(evaluateExpr(elist.getExpr(), context, funcs));
+            } else if(id.equals("isNil")){
+                CallStmt.isNil(evaluateExpr(elist.getExpr(), context, funcs));
+            } else if(id.equals("setLeft")){
+                CallStmt.setLeft((QRefVal)evaluateExpr(elist.getExpr(), context, funcs), evaluateExpr(elist.getExprList().getExpr(), context, funcs));
+            } else if(id.equals("setRight")){
+                CallStmt.setRight((QRefVal)evaluateExpr(elist.getExpr(), context, funcs), evaluateExpr(elist.getExprList().getExpr(), context, funcs));               
+            } else {
+                FuncDef f = funcs.get(id);
+                HashMap<String, QVal> innerScope = new HashMap<String, QVal>();
+                executeExprList(f.getFuncParams(), elist, innerScope, context, funcs);
+                executeFunc(f, innerScope, funcs);
+            }
+            return null;
+
+        }else if (s instanceof IfStmt) {
             IfStmt i = (IfStmt)s;
             Cond cond = i.getCond();
             Stmt sBlock = i.getStmt();
@@ -190,6 +232,16 @@ public class Interpreter {
             } else {
                 return executeStmt(sElseBlock, context, funcs);
             } 
+        } else if (s instanceof WhileStmt){
+            WhileStmt w = (WhileStmt)s;
+            Cond cond = w.getCond();
+            Stmt stmt = w.getStmt();
+            QVal ret = null;
+            while(evaluateCond(cond, context, funcs)){
+                ret = executeStmt(stmt, context, funcs);
+                if (ret != null) break;
+            }
+            return ret;
         } else if( s instanceof ReturnStmt){
             ReturnStmt r = (ReturnStmt) s;
             return evaluateExpr(r.getExpr(), context, funcs);
@@ -211,19 +263,19 @@ public class Interpreter {
 
 
 
-    Boolean evaluateCond(Cond condition, HashMap<String, Long> context, HashMap<String, FuncDef> funcs){
+    Boolean evaluateCond(Cond condition, HashMap<String, QVal> context, HashMap<String, FuncDef> funcs){
         if (condition instanceof CompareCond){
             CompareCond c = (CompareCond) condition;
             Expr leftSide = c.getLeftExpr();
             Expr rightSide = c.getRightExpr();
             int comparator = c.getComparator();
             switch(comparator) {
-                case CompareCond.LT: return (Long)evaluateExpr(leftSide, context, funcs) < (Long)evaluateExpr(rightSide, context, funcs);
-                case CompareCond.GT: return (Long)evaluateExpr(leftSide, context, funcs) > (Long)evaluateExpr(rightSide, context, funcs);
-                case CompareCond.LE: return (Long)evaluateExpr(leftSide, context, funcs) <= (Long)evaluateExpr(rightSide, context, funcs);
-                case CompareCond.EQ: return evaluateExpr(leftSide, context, funcs).equals((Long)evaluateExpr(rightSide, context, funcs));
-                case CompareCond.GE: return (Long)evaluateExpr(leftSide, context, funcs) >= (Long)evaluateExpr(rightSide, context, funcs);
-                case CompareCond.NE: return (Long)evaluateExpr(leftSide, context, funcs) != (Long)evaluateExpr(rightSide, context, funcs);
+                case CompareCond.LT: return ((QIntVal)evaluateExpr(leftSide, context, funcs)).getInt() < ((QIntVal)evaluateExpr(rightSide, context, funcs)).getInt();
+                case CompareCond.GT: return ((QIntVal)evaluateExpr(leftSide, context, funcs)).getInt() > ((QIntVal)evaluateExpr(rightSide, context, funcs)).getInt();
+                case CompareCond.LE: return ((QIntVal)evaluateExpr(leftSide, context, funcs)).getInt() <= ((QIntVal)evaluateExpr(rightSide, context, funcs)).getInt();
+                case CompareCond.EQ: return ((QIntVal)evaluateExpr(leftSide, context, funcs)).getInt() == (((QIntVal)evaluateExpr(rightSide, context, funcs)).getInt());
+                case CompareCond.GE: return ((QIntVal)evaluateExpr(leftSide, context, funcs)).getInt() >= ((QIntVal)evaluateExpr(rightSide, context, funcs)).getInt();
+                case CompareCond.NE: return ((QIntVal)evaluateExpr(leftSide, context, funcs)).getInt() != ((QIntVal)evaluateExpr(rightSide, context, funcs)).getInt();
             } 
             
         } else if(condition instanceof LogicalCond){
@@ -244,24 +296,25 @@ public class Interpreter {
 
     //EXPRESSIONS
 
-    Object evaluateExpr(Expr expr, HashMap<String, Long> context, HashMap<String, FuncDef> funcs) {
+    QVal evaluateExpr(Expr expr, HashMap<String, QVal> context, HashMap<String, FuncDef> funcs) {
         if (expr instanceof ConstExpr) {
             return ((ConstExpr)expr).getValue();
         } else if(expr instanceof VarExpr ) {
             VarExpr v = (VarExpr) expr;
             String vname = v.getVariableName();
             if(context.containsKey(vname)){
-                return (Long)context.get(vname);
+                return context.get(vname);
             }
         } else if ( expr instanceof UMinusExpr) {
             UMinusExpr uexpr = (UMinusExpr)expr; 
-                return 0 - (Long)evaluateExpr(uexpr.getUMinusExpr(), context, funcs);
+                return new QIntVal(0 - ((QIntVal)evaluateExpr(uexpr.getUMinusExpr(), context, funcs)).getInt());
         } else if (expr instanceof BinaryExpr) {
             BinaryExpr binaryExpr = (BinaryExpr)expr;
             switch (binaryExpr.getOperator()) {
-                case BinaryExpr.PLUS: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs) + (Long)evaluateExpr(binaryExpr.getRightExpr(), context, funcs);
-                case BinaryExpr.MINUS: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs) - (Long)evaluateExpr(binaryExpr.getRightExpr(), context, funcs);
-                case BinaryExpr.TIMES: return (Long)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs) * (Long)evaluateExpr(binaryExpr.getRightExpr(), context, funcs);
+                case BinaryExpr.PLUS: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() + ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
+                case BinaryExpr.MINUS: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() - ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
+                case BinaryExpr.TIMES: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() * ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
+                case BinaryExpr.DOT : return new QRefVal(false, new QObj(evaluateExpr(binaryExpr.getLeftExpr(), context, funcs), evaluateExpr(binaryExpr.getRightExpr(), context, funcs)));
                 default: throw new RuntimeException("Unhandled operator");
             }
         } else if (expr instanceof CallExpr){
@@ -269,43 +322,78 @@ public class Interpreter {
             String ident = callexpr.getIdent();
             ExprList elist = callexpr.getExprList();
             if(ident.equals("randomInt")){
-                return CallExpr.randomInt((long)evaluateExpr(elist.getExpr(), context, funcs));
+                long intValue = ((QIntVal) evaluateExpr(elist.getExpr(), context, funcs)).getInt();
+                return new QIntVal(CallExpr.randomInt(intValue));
+            } else if(ident.equals("left")){
+                return CallStmt.left(((QRefVal) evaluateExpr(elist.getExpr(), context, funcs)));
+            } else if(ident.equals("right")){
+                return CallStmt.right(((QRefVal) evaluateExpr(elist.getExpr(), context, funcs)));
+            } else if(ident.equals("isAtom")){
+                return CallStmt.isAtom(evaluateExpr(elist.getExpr(), context, funcs));
+            } else if(ident.equals("isNil")){
+                return CallStmt.isNil(evaluateExpr(elist.getExpr(), context, funcs));
+            } else if(ident.equals("setLeft")){
+                return CallStmt.setLeft((QRefVal)evaluateExpr(elist.getExpr(), context, funcs), evaluateExpr(elist.getExprList().getExpr(), context, funcs));
+            } else if(ident.equals("setRight")){
+                return CallStmt.setRight((QRefVal)evaluateExpr(elist.getExpr(), context, funcs), evaluateExpr(elist.getExprList().getExpr(), context, funcs));               
             } 
             if(funcs.containsKey(ident)){
                 FuncDef func = funcs.get(ident);
-                HashMap<String, Long> newScope = new HashMap<String, Long>();
-                System.out.println("expr: " + callexpr);
-                System.out.println("elist: " + elist);
+                HashMap<String, QVal> newScope = new HashMap<String, QVal>();
+                //System.out.println("expr: " + callexpr);
+                //System.out.println("elist: " + elist);
                 executeExprList(func.getFuncParams(), elist, newScope, context, funcs);
                 return executeFunc(func, newScope, funcs);
             } else {
                 throw new RuntimeException("Unexpected Function call");
             }
+        }else if (expr instanceof CastExpr){
+            CastExpr c = (CastExpr)expr;
+            Expr expr1 = c.getExpr();
+            Type type = c.getType();
+            QVal val = evaluateExpr(expr1, context, funcs);
+            switch(type.getVarType()){
+                case Type.INT:
+                if(val instanceof QIntVal) return val;
+                return (QIntVal)evaluateExpr(expr1, context, funcs);
+                
+                case Type.REF:
+                if(val instanceof QRefVal) return val;
+                return (QRefVal)evaluateExpr(expr1, context, funcs);
+
+                case Type.Q:
+                if(val instanceof QVal) return val;
+                return (QVal)evaluateExpr(expr1, context, funcs);
+
+                default: throw new RuntimeException("Cast of undefinded type");
+            }
         } 
-            System.out.println(expr);
+            System.out.println("Expr:" + expr);
             throw new RuntimeException("Unhandled Expr type");
     }
 
-    Object executeExprList(FormalDeclList formalDeclList, ExprList elist, HashMap<String, Long> innerContext, HashMap<String, Long> context, HashMap<String, FuncDef> funcs){
+    QVal executeExprList(FormalDeclList formalDeclList, ExprList elist, HashMap<String, QVal> innerContext, HashMap<String, QVal> context, HashMap<String, FuncDef> funcs){
         if(elist != null){
             ExprList neExprList = elist;
-            System.out.println("ExprList: " + elist);
+           // System.out.println("ExprList: " + elist);
             FormalDeclList fdl = formalDeclList;
             if(fdl !=null){
-                System.out.println(">1 parameter");
+                //System.out.println(">1 parameter");
                 FormalDeclList neFdl = fdl;
-                System.out.println("neFdl: " + neFdl);
-                System.out.println("neExprList: " + neExprList);
+                //System.out.println("neFdl: " + neFdl);
+               // System.out.println("neExprList: " + neExprList);
                 while(neExprList != null){
                     VarDecl var = neFdl.getVarDecl();
                     neFdl = neFdl.getFuncParams();
                     Expr e = neExprList.getExpr();
                     neExprList = neExprList.getExprList();
-                    innerContext.put(var.getVarName(), (Long) evaluateExpr(e, context, funcs));
+                    QVal tempCheck = evaluateExpr(e, context, funcs);
+                    tempCheck.mutable = var.isMutable();
+                    innerContext.put(var.getVarName(), tempCheck);
                 }
             }
         }
-        System.out.println("innerContext: " + innerContext);
+        //System.out.println("innerContext: " + innerContext);
         return null;
     }
 

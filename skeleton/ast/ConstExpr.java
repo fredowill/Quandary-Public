@@ -2,19 +2,27 @@ package ast;
 
 public class ConstExpr extends Expr {
 
-    final long value;
+    final QVal value;
 
     public ConstExpr(long value, Location loc) {
         super(loc);
-        this.value = value;
+        this.value = new QIntVal(value);
     }
 
-    public long getValue() {
-        return value;
+    public ConstExpr(Location loc) {
+        super(loc);
+        this.value = new QRefVal(true, null);
+    }
+
+    public QVal getValue() {
+        return this.value;
     }
 
     @Override
     public String toString() {
-        return value + "";
+        if (this.value != null)
+            return value.toString();
+        else
+            return "nil";
     }
 }

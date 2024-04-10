@@ -31,9 +31,10 @@ terminal PLUS, MINUS, TIMES, LPAREN, RPAREN, LCURLY, RCURLY;
 terminal UMINUS;
 terminal SEMICOLON, RETURN, PRINT, COMMA;
 terminal INT, Q, REF;
-terminal IF, ELSE;
+terminal IF, ELSE, WHILE;
 terminal EQ, GE, GT, LE, LT, NE, NOT, AND, OR;
 terminal ASSIGN;
+terminal MUTABLE, NIL, DOT;
 
 terminal Long  INTCONST;
 terminal String IDENT;
@@ -63,9 +64,11 @@ precedence left OR;
 precedence left AND;
 precedence left NOT;
 precedence left EQ, GE, GT, LE, LT, NE;
+precedence left DOT;
 precedence left PLUS, MINUS;
 precedence left TIMES;
 precedence left UMINUS;
+
 
 start with program;
 
@@ -97,7 +100,10 @@ neFormalDeclList ::=  varDecl:v COMMA neFormalDeclList:nfl
          ;
 
 varDecl ::= type:t IDENT:id
-            {: RESULT = new VarDecl(t, id, loc(tleft, tright)); :}
+            {: RESULT = new VarDecl(false, t, id, loc(tleft, tright)); :}
+         |
+            MUTABLE type:t IDENT:id
+            {: RESULT = new VarDecl(true, t, id, loc(tleft, tright)); :}
          ;        
 
 type ::= INT:e
@@ -116,10 +122,16 @@ stmtList ::= stmt:s stmtList:sl
          
 stmt ::= varDecl:v ASSIGN expr:e SEMICOLON
             {: RESULT = new VarDeclStmt(v, e, loc(vleft, vleft)); :}
+      |    IDENT:id ASSIGN expr:e SEMICOLON
+            {: RESULT = new AssignStmt(id, e, loc(idleft, idleft)); :}
       |   IF LPAREN cond:c RPAREN stmt:s
             {:RESULT = new IfStmt(c, s, loc(cleft, cleft)); :}
       |   IF LPAREN cond:c RPAREN stmt:s1 ELSE stmt:s2
             {:RESULT = new IfElseStmt(c, s1, s2, loc(cleft, cright)); :}
+      |   WHILE LPAREN cond:c RPAREN stmt:s
+            {:RESULT = new WhileStmt(c, s, loc(cleft, cright)); :}
+      |   IDENT:id LPAREN exprList:eList RPAREN SEMICOLON
+            {:RESULT = new CallStmt(id, eList, loc(idleft, idright)); :}
       |   PRINT expr:e SEMICOLON
             {:RESULT = new PrintStmt(e, loc(eleft, eright)); :}
       |   RETURN expr:e SEMICOLON
@@ -150,12 +162,17 @@ cond ::= expr:e1 LE expr:e2
          {: RESULT = c; :}
       ;
 
-expr ::= INTCONST:c
+expr ::= NIL:n
+         {: RESULT = new ConstExpr(loc(nleft, nright)); :}
+      |   INTCONST:c
          {: RESULT = new ConstExpr(c, loc(cleft, cright)); :}
       |   IDENT:c
          {: RESULT = new VarExpr(c, loc(cleft, cright)); :}
       |  MINUS expr:e
          {: RESULT = new UMinusExpr(e, loc(eleft, eright)); :} 
+         %prec UMINUS
+      |  LPAREN type:t RPAREN expr:e
+         {: RESULT = new CastExpr(t, e, loc(tleft, tright)); :}
          %prec UMINUS
       |  binaryExpr:e
          {: RESULT = e; :}
@@ -183,4 +200,6 @@ binaryExpr ::= expr:e1 PLUS expr:e2
                {: RESULT = new BinaryExpr(e1, BinaryExpr.MINUS, e2, loc(e1left, e1right)); :}
             |  expr:e1 TIMES expr:e2
                {: RESULT = new BinaryExpr(e1, BinaryExpr.TIMES, e2, loc(e1left, e1right)); :}
+            |  expr:e1 DOT expr:e2
+               {: RESULT = new BinaryExpr(e1, BinaryExpr.DOT, e2, loc(e1left, e1right)); :}
             ;

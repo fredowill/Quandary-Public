@@ -77,6 +77,8 @@ white_space = {new_line} | [ \t\f]
 "print"          { return symbol("print", PRINT);}
 "="               { return symbol("=", ASSIGN);}
 ","               { return symbol(",", COMMA);}
+"."               { return symbol(".", DOT);}
+"nil"               { return symbol("nil", NIL);}
 
 /*types*/
 "int"               { return symbol("int",  INT); }
@@ -84,7 +86,9 @@ white_space = {new_line} | [ \t\f]
 "Q"                  { return symbol("Q",  Q); }
 
 /*keywords*/
+"mutable"           { return symbol("mutable", MUTABLE);}
 "if"               { return symbol("if",  IF); }
+"while"           { return symbol("while", WHILE);}
 "else"               { return symbol("else",  ELSE); }
 
 /*cond seperators*/
