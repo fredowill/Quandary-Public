@@ -72,6 +72,8 @@ white_space = {new_line} | [ \t\f]
 ")"               { return symbol(")",  RPAREN); }
 "{"               { return symbol("(",  LCURLY); }
 "}"               { return symbol(")",  RCURLY); }
+"["               { return symbol("(",  LBRAC); }
+"]"               { return symbol(")",  RBRAC); }
 ";"               { return symbol(";",  SEMICOLON); }
 "return"          { return symbol("return", RETURN);}
 "print"          { return symbol("print", PRINT);}

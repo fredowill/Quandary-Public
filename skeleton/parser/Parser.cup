@@ -27,7 +27,7 @@ parser code {:
 
 :};
 
-terminal PLUS, MINUS, TIMES, LPAREN, RPAREN, LCURLY, RCURLY;
+terminal PLUS, MINUS, TIMES, LPAREN, RPAREN, LCURLY, RCURLY, LBRAC, RBRAC;
 terminal UMINUS;
 terminal SEMICOLON, RETURN, PRINT, COMMA;
 terminal INT, Q, REF;
@@ -116,7 +116,7 @@ type ::= INT:e
 
 stmtList ::= stmt:s stmtList:sl
             {: RESULT = new StmtList(s, sl, loc(slleft, slleft)); :}
-      |   /*placeholder*/
+      |   
             {:RESULT = null; :}
          ; 
          
@@ -195,11 +195,19 @@ neExprList ::= expr:e COMMA neExprList:eList
       ;
 
 binaryExpr ::= expr:e1 PLUS expr:e2
-               {: RESULT = new BinaryExpr(e1, BinaryExpr.PLUS, e2, loc(e1left, e1right)); :}
+               {: RESULT = new BinaryExpr(false, e1, BinaryExpr.PLUS, e2, loc(e1left, e1right)); :}
             |  expr:e1 MINUS expr:e2
-               {: RESULT = new BinaryExpr(e1, BinaryExpr.MINUS, e2, loc(e1left, e1right)); :}
+               {: RESULT = new BinaryExpr(false, e1, BinaryExpr.MINUS, e2, loc(e1left, e1right)); :}
             |  expr:e1 TIMES expr:e2
-               {: RESULT = new BinaryExpr(e1, BinaryExpr.TIMES, e2, loc(e1left, e1right)); :}
+               {: RESULT = new BinaryExpr(false, e1, BinaryExpr.TIMES, e2, loc(e1left, e1right)); :}
             |  expr:e1 DOT expr:e2
-               {: RESULT = new BinaryExpr(e1, BinaryExpr.DOT, e2, loc(e1left, e1right)); :}
+               {: RESULT = new BinaryExpr(false, e1, BinaryExpr.DOT, e2, loc(e1left, e1right)); :}
+            | LBRAC expr:e1 PLUS expr:e2 RBRAC
+               {: RESULT = new BinaryExpr(true, e1, BinaryExpr.PLUS, e2, loc(e1left, e1right)); :}
+            |  LBRAC expr:e1 MINUS expr:e2 RBRAC
+               {: RESULT = new BinaryExpr(true, e1, BinaryExpr.MINUS, e2, loc(e1left, e1right)); :}
+            |  LBRAC expr:e1 TIMES expr:e2 RBRAC
+               {: RESULT = new BinaryExpr(true, e1, BinaryExpr.TIMES, e2, loc(e1left, e1right)); :}
+            |  LBRAC expr:e1 DOT expr:e2 RBRAC
+               {: RESULT = new BinaryExpr(true, e1, BinaryExpr.DOT, e2, loc(e1left, e1right)); :}
             ;

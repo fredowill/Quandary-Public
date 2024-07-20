@@ -7,6 +7,12 @@ import java.util.Random;
 import parser.ParserWrapper;
 import ast.*;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+
 public class Interpreter {
 
     // Process return codes
@@ -143,9 +149,9 @@ public class Interpreter {
             Stmt s = slist.getStmt();
             slist = slist.getStmtList();
             ret = executeStmt(s, copiedMap, funcs);
-            if(ret != null){
+            if(ret != null ){
                 return ret;
-            }
+            } 
             updateMap(context, copiedMap);
         }
         return null;
@@ -206,6 +212,10 @@ public class Interpreter {
                 CallStmt.setLeft((QRefVal)evaluateExpr(elist.getExpr(), context, funcs), evaluateExpr(elist.getExprList().getExpr(), context, funcs));
             } else if(id.equals("setRight")){
                 CallStmt.setRight((QRefVal)evaluateExpr(elist.getExpr(), context, funcs), evaluateExpr(elist.getExprList().getExpr(), context, funcs));               
+            }else if(id.equals("acq")){
+                CallStmt.acq((QRefVal)evaluateExpr(elist.getExpr(), context, funcs));               
+            }else if(id.equals("rel")){
+                CallStmt.rel((QRefVal)evaluateExpr(elist.getExpr(), context, funcs));               
             } else {
                 FuncDef f = funcs.get(id);
                 HashMap<String, QVal> innerScope = new HashMap<String, QVal>();
@@ -237,7 +247,12 @@ public class Interpreter {
             Cond cond = w.getCond();
             Stmt stmt = w.getStmt();
             QVal ret = null;
-            while(evaluateCond(cond, context, funcs)){
+            boolean ans;
+            while(ans = evaluateCond(cond, context, funcs)){
+                System.out.println("stmt:" + stmt);
+                System.out.println("cond:" + ans);
+                System.out.println("conddd:" + cond);
+
                 ret = executeStmt(stmt, context, funcs);
                 if (ret != null) break;
             }
@@ -253,7 +268,7 @@ public class Interpreter {
             System.out.println(str);
             return null;
         } else {
-            throw new RuntimeException("Unhandled Stmt type");
+            throw new RuntimeException("Unhandled Stmt type:" + s);
         }
 
     }
@@ -310,12 +325,37 @@ public class Interpreter {
                 return new QIntVal(0 - ((QIntVal)evaluateExpr(uexpr.getUMinusExpr(), context, funcs)).getInt());
         } else if (expr instanceof BinaryExpr) {
             BinaryExpr binaryExpr = (BinaryExpr)expr;
-            switch (binaryExpr.getOperator()) {
-                case BinaryExpr.PLUS: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() + ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
-                case BinaryExpr.MINUS: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() - ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
-                case BinaryExpr.TIMES: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() * ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
-                case BinaryExpr.DOT : return new QRefVal(false, new QObj(evaluateExpr(binaryExpr.getLeftExpr(), context, funcs), evaluateExpr(binaryExpr.getRightExpr(), context, funcs)));
-                default: throw new RuntimeException("Unhandled operator");
+            if (binaryExpr.isConcurrent()) {
+                MyThread leftThread = new MyThread(1, binaryExpr.getLeftExpr(), context, funcs); // Assign ID 1 to left thread
+                MyThread rightThread = new MyThread(2, binaryExpr.getRightExpr(), context, funcs); // Assign ID 2 to right thread
+                Thread t1 = new Thread(leftThread);
+                Thread t2 = new Thread(rightThread);                
+                t1.start();
+                t2.start();
+
+                try {
+                    t1.join();
+                    t2.join();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException("Thread execution interrupted", e);
+                }  
+                QVal leftValue = leftThread.getResult();
+                QVal rightValue = rightThread.getResult();
+                switch (binaryExpr.getOperator()){
+                    case BinaryExpr.PLUS: return new QIntVal( ((QIntVal)leftValue).getInt() + ((QIntVal)rightValue).getInt() );
+                    case BinaryExpr.MINUS: return new QIntVal( ((QIntVal)leftValue).getInt() - ((QIntVal)rightValue).getInt() );
+                    case BinaryExpr.TIMES: return new QIntVal( ((QIntVal)leftValue).getInt() * ((QIntVal)rightValue).getInt() );
+                    case BinaryExpr.DOT: return new QRefVal(false, new QObj(leftValue, rightValue));
+                    default: throw new RuntimeException("Unhandled operator during concurrency");
+                }
+            } else {
+                switch (binaryExpr.getOperator()) {
+                    case BinaryExpr.PLUS: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() + ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
+                    case BinaryExpr.MINUS: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() - ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
+                    case BinaryExpr.TIMES: return new QIntVal(((QIntVal)evaluateExpr(binaryExpr.getLeftExpr(), context, funcs)).getInt() * ((QIntVal)evaluateExpr(binaryExpr.getRightExpr(), context, funcs)).getInt());
+                    case BinaryExpr.DOT : return new QRefVal(false, new QObj(evaluateExpr(binaryExpr.getLeftExpr(), context, funcs), evaluateExpr(binaryExpr.getRightExpr(), context, funcs)));
+                    default: throw new RuntimeException("Unhandled operator");
+                    }
             }
         } else if (expr instanceof CallExpr){
             CallExpr callexpr = (CallExpr)expr;
@@ -336,7 +376,11 @@ public class Interpreter {
                 return CallStmt.setLeft((QRefVal)evaluateExpr(elist.getExpr(), context, funcs), evaluateExpr(elist.getExprList().getExpr(), context, funcs));
             } else if(ident.equals("setRight")){
                 return CallStmt.setRight((QRefVal)evaluateExpr(elist.getExpr(), context, funcs), evaluateExpr(elist.getExprList().getExpr(), context, funcs));               
-            } 
+            } else if (ident.equals("acq")){
+                return CallStmt.acq((QRefVal)evaluateExpr(elist.getExpr(), context, funcs));               
+            } else if (ident.equals("rel")){
+                return CallStmt.rel((QRefVal)evaluateExpr(elist.getExpr(), context, funcs));               
+            }    
             if(funcs.containsKey(ident)){
                 FuncDef func = funcs.get(ident);
                 HashMap<String, QVal> newScope = new HashMap<String, QVal>();
@@ -368,9 +412,37 @@ public class Interpreter {
                 default: throw new RuntimeException("Cast of undefinded type");
             }
         } 
-            System.out.println("Expr:" + expr);
+           // System.out.println("Expr:" + expr);
             throw new RuntimeException("Unhandled Expr type");
     }
+
+    class MyThread implements Runnable {
+        private final int threadID;
+        private final Expr expr;
+        private final HashMap<String, QVal> context;
+        private final HashMap<String, FuncDef> funcs;
+        private QVal result;
+    
+        public MyThread(int threadID, Expr expr, HashMap<String, QVal> context, HashMap<String, FuncDef> funcs) {
+            this.threadID = threadID;
+            this.expr = expr;
+            this.context = context;
+            this.funcs = funcs;
+        }
+    
+        public void run() {
+            result = evaluateExpr(expr, context, funcs);
+        }
+    
+        public int getThreadID() {
+            return threadID;
+        }
+    
+        public QVal getResult() {
+            return result;
+        }
+    }
+    
 
     QVal executeExprList(FormalDeclList formalDeclList, ExprList elist, HashMap<String, QVal> innerContext, HashMap<String, QVal> context, HashMap<String, FuncDef> funcs){
         if(elist != null){
@@ -396,6 +468,8 @@ public class Interpreter {
         //System.out.println("innerContext: " + innerContext);
         return null;
     }
+
+        
 
 	public static void fatalError(String message, int processReturnCode) {
         System.out.println(message);

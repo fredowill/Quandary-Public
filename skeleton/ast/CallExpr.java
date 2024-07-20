@@ -23,4 +23,8 @@ public class CallExpr extends Expr {
         return (long) (n*Math.random());
     }
 
+    @Override
+    public String toString() {
+        return "(" + this.exprList.toString() + ")";
+    }
 }

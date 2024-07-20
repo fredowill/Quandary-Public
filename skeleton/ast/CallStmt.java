@@ -1,14 +1,19 @@
 package ast;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class CallStmt extends Stmt {
 
     final String ident;
     final ExprList exprList;
+    private static final Lock lock = new ReentrantLock();
+
 
     public CallStmt(String id, ExprList el, Location loc) {
         super(loc);
         this.ident = id;
         this.exprList = el;
+        
     }
 
     public String getIdent() {
@@ -49,6 +54,14 @@ public class CallStmt extends Stmt {
 
     public static QIntVal setLeft(QRefVal r, QVal value) {
         r.objVal.left = value;
+        return new QIntVal(1);
+    }
+    public static QIntVal acq(QRefVal r) {
+        r.lock.lock();
+        return new QIntVal(1);
+    }
+    public static QIntVal rel(QRefVal r) {
+        r.lock.unlock();
         return new QIntVal(1);
     }
 }

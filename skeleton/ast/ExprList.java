@@ -19,4 +19,12 @@ public class ExprList extends ASTNode {
         return this.exprList;
     }
 
+    @Override
+    public String toString() {
+        if(exprList != null) {
+            return expr.toString() + " ," + exprList.toString();
+        }
+       return expr.toString();
+    }
+
 }

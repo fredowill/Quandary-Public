@@ -10,12 +10,14 @@ public class BinaryExpr extends Expr {
     final Expr expr1;
     final int operator;
     final Expr expr2;
+    final Boolean concurrent;
 
-    public BinaryExpr(Expr expr1, int operator, Expr expr2, Location loc) {
+    public BinaryExpr(Boolean isConcurrent, Expr expr1, int operator, Expr expr2, Location loc) {
         super(loc);
         this.expr1 = expr1;
         this.operator = operator;
         this.expr2 = expr2;
+        this.concurrent = isConcurrent;
     }
 
     public Expr getLeftExpr() {
@@ -28,6 +30,10 @@ public class BinaryExpr extends Expr {
     
     public Expr getRightExpr() {
         return expr2;
+    }
+
+    public Boolean isConcurrent() {
+        return this.concurrent;
     }
 
     @Override
